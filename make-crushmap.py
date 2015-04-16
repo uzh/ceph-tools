@@ -1,5 +1,6 @@
 #! /usr/bin/env python
 
+from collections import OrderedDict
 from copy import deepcopy
 import os
 import sys
@@ -11,6 +12,13 @@ def main():
     m.parse(sys.stdin)
 
     # alter map as needed
+    m = split_hdd_and_ssd(m)
+
+    # pretty-print map back to output
+    m.pprint(sys.stdout)
+
+
+def split_hdd_and_ssd(m):
     for name, data in m.hosts.items():
         weights = set(data['item'].values())
 
@@ -43,8 +51,43 @@ def main():
                 name + '-hdd': tot_wt_hdd,
             }
 
-    # pretty-print map back to output
-    m.pprint(sys.stdout)
+    # Now, create a new root for SSDs
+    ssdroot = OrderedDict()
+    ssdroot['id'] = m.new_id()
+    ssdroot['alg'] = 'straw'
+    ssdroot['hash'] = '0'
+    ssdroot['item'] = {}
+    for name, data in m.hosts.items():
+        if name.endswith('-ssd'):
+            ssdroot['item'][name] = sum(wt for wt in data['item'].values())
+    m.roots['ssdroot'] = ssdroot
+
+    # and then, create a new root for spinning disks
+    hddroot = OrderedDict()
+    hddroot['id'] = m.new_id()
+    hddroot['alg'] = 'straw'
+    hddroot['hash'] = '0'
+    hddroot['item'] = {}
+    for name, data in m.hosts.items():
+        if name.endswith('-hdd'):
+            hddroot['item'][name] = sum(wt for wt in data['item'].values())
+    m.roots['hddroot'] = hddroot
+
+    # Finally, create two new ruleset for ssd and spinning disks
+    ssdrule = OrderedDict()
+    ssdrule['#name'] = 'ssd'
+    ssdrule['ruleset'] = 1 + max(int(rule['ruleset']) for rule in m.rules.values())
+    ssdrule['type'] = 'replicated'
+    ssdrule['min_size'] = 1
+    ssdrule['max_size'] = 10
+    ssdrule['step'] = OrderedDict((
+        ('take', 'ssdroot'),
+        ('chooseleaf', 'firstn 0 type host'),
+        ('emit', '')
+    ))
+    m.rules['ssd'] = ssdrule
+
+    return m
 
 
 class CrushMap(object):
@@ -53,7 +96,7 @@ class CrushMap(object):
         self.tunables = {}
         self.devices = {}
         self.types = {}
-        self.hosts = {}
+        self.hosts = OrderedDict()
         self.roots = {}
         self.rules = {}
 
@@ -75,7 +118,10 @@ class CrushMap(object):
                 self.rules[parts[1]] = self._parse_rule(parts[1], input)
 
     def _parse_host_or_root(self, name, input):
-        data = { '#name':name, 'item':{} }
+        data = OrderedDict((
+            ('#name', name),
+            ('id', '-999'),
+            ('item', {})))
         for parts in input:
             if '}' == parts[0]:
                 return data
@@ -89,7 +135,7 @@ class CrushMap(object):
                 data[parts[0]] = parts[1]
 
     def _parse_rule(self, name, input):
-        rules = { '#name':name, 'step':{} }
+        rules = OrderedDict((('#name', name), ('step',OrderedDict())))
         for parts in input:
             if '}' == parts[0]:
                 return rules
@@ -104,29 +150,37 @@ class CrushMap(object):
         return id
 
     def pprint(self, stream=sys.stdout):
+        stream.write("# begin crush map\n")
         for k, v in sorted(self.tunables.items(), key=(lambda it: it[0])):
             stream.write("tunable %s %s\n" % (k, v))
         stream.write('\n')
 
+        stream.write("# devices\n")
         for k, v in sorted(self.devices.items(), key=(lambda it: int(it[0]))):
             stream.write("device %s %s\n" % (k, v))
         stream.write('\n')
 
+        stream.write("# types\n")
         for k, v in sorted(self.types.items(), key=(lambda it: int(it[0]))):
-            stream.write("device %s %s\n" % (k, v))
+            stream.write("type %s %s\n" % (k, v))
         stream.write('\n')
 
-        for k, v in sorted(self.hosts.items(), key=(lambda it: -it[1]['id'])):
+        stream.write("# buckets\n")
+        for k, v in reversed(self.hosts.items()):
             self._pprint_host_or_root("host", stream, k, v)
             stream.write('\n')
+        stream.write('\n')
 
         for k, v in sorted(self.roots.items(), key=(lambda it: -it[1]['id'])):
             self._pprint_host_or_root("root", stream, k, v)
             stream.write('\n')
 
-        for k, v in sorted(self.rules.items(), key=(lambda it: it[0])):
+        stream.write("# rules\n")
+        for k, v in self.rules.items():
             self._pprint_rule(stream, k, v)
             stream.write('\n')
+
+        stream.write("# end crush map\n")
 
     def _pprint_host_or_root(self, kind, stream, name, data):
         stream.write("%s %s {\n" % (kind, name))
@@ -134,9 +188,9 @@ class CrushMap(object):
         for k, v in data.items():
             if 'item' == k:
                 continue
-            stream.write("  %s %s\n" % (k, v))
+            stream.write("\t%s %s\n" % (k, v))
         for k, v in data['item'].items():
-            stream.write('  item %s weight %s\n' % (k, v))
+            stream.write('\titem %s weight %s\n' % (k, v))
         stream.write('}\n')
 
     def _pprint_rule(self, stream, name, data):
@@ -144,9 +198,9 @@ class CrushMap(object):
         for k, v in data.items():
             if 'step' == k:
                 continue
-            stream.write("  %s %s\n" % (k, v))
+            stream.write("\t%s %s\n" % (k, v))
         for k, v in data['step'].items():
-            stream.write('  step %s %s\n' % (k, v))
+            stream.write('\tstep %s %s\n' % (k, v))
         stream.write('}\n')
 
 
