@@ -1,0 +1,92 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-#
+# @(#)missing-osds.py
+#
+#
+# Copyright (C) 2015, GC3, University of Zurich. All rights reserved.
+#
+#
+# This program is free software; you can redistribute it and/or modify it
+# under the terms of the GNU General Public License as published by the
+# Free Software Foundation; either version 2 of the License, or (at your
+# option) any later version.
+#
+# This program is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+"""
+Simple script to show which ceph hosts have issues.
+
+Usage:
+  missing-osds.py [--brief] [--ceph <path>]
+
+Options:
+
+ -h, --help  Show this help screen.
+ --brief     Only show osds with problems.
+ -c, --ceph <path>  Path to ceph [default: /usr/bin/ceph]
+"""
+__docformat__ = 'reStructuredText'
+__author__ = 'Antonio Messina <antonio.s.messina@gmail.com>'
+
+import json
+import os
+import subprocess
+import re
+from collections import Counter
+from docopt import docopt
+
+cfg = docopt(__doc__)
+
+CEPH = cfg['--ceph']
+
+osd_db = {
+    re.compile('osd-[kl][0-9]-[0-9]+') : 24,
+    re.compile('vhp-[kl][0-9]-[0-9]+') : 8,
+}
+
+out = subprocess.check_output([CEPH, 'osd', 'tree', '-f', 'json'])
+crush = json.loads(out)
+
+roots = {r['name']:r for r in crush['nodes'] if r['type'] == 'root'}
+hosts = [i for i in  crush['nodes'] if i['type'] == 'host']
+devices={i['id']: i for i in crush['nodes'] if i['type'] == 'osd'}
+
+for r in roots.values():
+    r['hosts'] = [h for h in hosts if h['id'] in r['children']]
+
+for h in hosts:
+    h['osds'] = [v for (k,v) in devices.items() if k in h['children']]
+    h['osds-down'] = [i for i in h['osds'] if i['status'] == 'down']
+
+for rname, root in roots.items():
+    if not cfg['--brief']:
+        print("%s" % rname)
+    for host in sorted(root['hosts'], key=lambda x: x['name']):
+        if not cfg['--brief']:
+            osds = []
+            for w,n in Counter([o['crush_weight'] for o in host['osds']]).items():
+                osds.append("%2d x %.2fTB" % (n,w))
+            print("  %s: %2s" % (host['name'], str.join(', ', osds)))
+
+        for (regexp, num) in osd_db.items():
+            if regexp.match(host['name']):
+                if len(host['osds']) != num:
+                    print("WARN: %s has %2d OSDs, should be %2d" % (host['name'], len(host['osds']), num))
+        if host['osds-down']:
+            print("WARN: %s has %2d OSDs down: %s" % (host['name'], len(host['osds-down']), str.join(' ', [i['name'] for i in host['osds-down']])))
+
+
+print("%d hosts, %d osds: %d up, %d down" % (
+    len(hosts),
+    sum([len(i['osds']) for i in hosts]),
+    len([i for i in devices.values() if i['status'] == 'up']),
+    len([i for i in devices.values() if i['status'] == 'down']),
+    ))
+if crush['stray']:
+    print("Stray OSDs: %s" % str.join(" ", [i['name'] for i in crush['stray']]))
