@@ -13,11 +13,11 @@ Runs FIO tests on SC hosts using a predefined set of parameters
 
 Options:
 
+  -n, --test-number N   REQUIRED: Test number.
+  -c, --clients N       Number of clients (must be multiple of 4). Default: $NUMCLIENTS
+  -r, --runs N          Number of runs. Default: $RUNS
+  -t, --runtime N       Runtime in seconds. Default: $RUNTIME
   --help, -h            Print this help text.
-  -n, --test-number N   Test number    
-  -r, --runs N          Number of runs
-  -c, --clients N       Number of clients (must be multiple of 4)
-  -t, --runtime N       Runtime in seconds
 EOF
 }
 
@@ -121,7 +121,7 @@ TIME_TOTAL=$[RUNTIME*N_TOTAL]
 FIO="/root/fio-rbd"
 MAINDIR=$PWD
 
-COLLECTLOPTS="-i 1:10:30 --runtime $[RUNTIME+15]s --plot --subsys cCdDJnNmMZ --sep ,"
+COLLECTLOPTS="-i 1:10:30 --runtime $[RUNTIME+15]s --plot --subsys cCdDJnNmMZ --sep , --rawtoo --hr -1"
 
 CURTEST=0
 for RUN in $(seq 1 $RUNS)
@@ -154,9 +154,9 @@ do
                     # Create cinder volume, if needed
                     CMDOPTS="-p $POOL -n client.cinder"
                     if [ "$POOL" = "vhp" ]; then
-                        $PDSH -f 5 "rbd $CMDOPTS info test-fio-\$(hostname -s) >& /dev/null || rbd $CMDOPTS create  --image-format 2 --size $SMALLSIZE test-fio-\$(hostname -s)"
+                        $PDSH -f 10 "rbd $CMDOPTS info test-fio-\$(hostname -s) >& /dev/null || rbd $CMDOPTS create  --image-format 2 --size $SMALLSIZE test-fio-\$(hostname -s)"
                     else
-                        $PDSH -f 5 "rbd $CMDOPTS info test-fio-\$(hostname -s) >& /dev/null || rbd $CMDOPTS create  --image-format 2 --size $SIZE test-fio-\$(hostname -s)"
+                        $PDSH -f 10 "rbd $CMDOPTS info test-fio-\$(hostname -s) >& /dev/null || rbd $CMDOPTS create  --image-format 2 --size $SIZE test-fio-\$(hostname -s)"
                     fi
                     # Drop cache
                     $PDSH 'echo 3 > /proc/sys/vm/drop_caches'
@@ -168,7 +168,7 @@ do
                     $PDSH -f 100 "echo -e \"[global]\nioengine=rbd\nclientname=cinder\npool=$POOL\nrbdname=test-fio-\$(hostname -s)\nrw=$TEST\nbs=$BS\ntime_based\nruntime=$RUNTIME\n\n[rbd_iodepth]\niodepth=$IODEPTH\n\" > ${OUT}.fio"
 
                     echo "Running $TEST test on pool $POOL with bs=$BS, iodepth=$IODEPTH for $RUNTIME seconds ($cachestring)"
-                    $PDSH -f 100 "collectl $COLLECTLOPTS -f $OUT.collectl >& /dev/null" & 
+                    $PDSH -f 100 "collectl $COLLECTLOPTS -f $OUT.collectl >& /dev/null" &
                     $OSDPDSH -f 100 "collectl $COLLECTLOPTS -f $OUT.collectl >& /dev/null" &
                     $PDSH -f 100 "cd $TESTDIR; $FIO ${OUT}.fio --minimal |tail -1 > ${OUT}.out "
                     wait
