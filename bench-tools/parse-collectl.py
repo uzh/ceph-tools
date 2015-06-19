@@ -119,6 +119,8 @@ def parse_directory(path, dataset, dsname):
     for root, dirs, files in os.walk(path):
         for fname in files:
             if not fname.endswith(dataset['ext'] + '.gz'):
+                print("Skipping file %s as it doesn't end in %s" % (
+                    fname, dataset['ext'] + '.gz'))
                 continue
             path = os.path.join(root, fname)
             ds = parse_file(path)
