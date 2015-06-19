@@ -173,7 +173,7 @@ for pool in data.pool.unique():
         continue
     for what, wlabel in (('iops', 'iops'),('mb/s', 'bandwidth (mb/s)')):
         for test in data.test.unique():
-            plot_pool(data, pool, what, wlabel, tests=[test], testlabel='.'+test)
+            plot_pool(data, pool, what, wlabel, tests=[test], testlabel='.mean.'+test)
             plot_pool(data, pool, what, wlabel, tests=[test], testlabel='.aggr.'+test, func=lambda x: x.sum(), funclabel='aggregate')
     for what, wlabel in (('lat', 'latency (ms)'),):
         for test in data.test.unique():
