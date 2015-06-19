@@ -71,7 +71,7 @@ def parse_file(fname):
     with gzip.open(fname, 'r') as input:
         out = StringIO(input.read())
 
-    ds = pd.read_csv(out, parse_dates=[[0,1]])
+    ds = pd.read_csv(out, parse_dates=[[0,1]], skiprows=15)
 
     # Fix column names
     ds = ds.rename(columns={'#Date_Time': 'DateTime'}, copy=False)
