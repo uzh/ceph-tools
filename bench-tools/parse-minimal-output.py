@@ -30,7 +30,7 @@ import pandas as pd
 import re
 import sys
 
-re_host = re.compile('(.*/)?fio-test(-[0-9\.]*)?.(?P<hostname>(osd|node|vhp)-[kl][0-9]-(01-)?[0-9]+).*')
+re_host = re.compile('(.*/)?fio-test(-[0-9a-z-\.]*)?.(?P<hostname>(osd|node|vhp)-[kl][0-9]-(01-)?[0-9]+).*')
 re_fiofile = re.compile('.*fio-test.(p:(?P<pool>[^.]+).)?'
                         'bs:(?P<bs>[0-9]+[a-z]).'
                         'iodepth:(?P<iodepth>[0-9]+).'
