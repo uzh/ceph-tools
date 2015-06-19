@@ -57,7 +57,7 @@ def parse_file(fname):
     if not fmatch:
         print("Ignoring file %s as it doesn't match regexp %s" % (
             fname, re_collectl.pattern))
-        return
+        return None
     print("Parsing file %s" % fname)
     # out = StringIO(subprocess.check_output(
     #     ['collectl',
@@ -74,7 +74,7 @@ def parse_file(fname):
     ds = pd.read_csv(out, parse_dates=[[0,1]])
 
     # Fix column names
-    ds.rename(columns={'#Date_Time': 'DateTime'}, copy=False)
+    ds = ds.rename(columns={'#Date_Time': 'DateTime'}, copy=False)
 
     # Add extra fields
     ds['hostname'] = fmatch.group('hostname')
@@ -90,29 +90,22 @@ def parse_directory(path, dataset, dsname):
     pandas.DataSet.
 
     """
-    if os.path.isfile(path):
-        fnames=[path]
-    else:
-        fnames = glob.glob('%s*.%s.gz' % (path, dataset['ext'])) +\
-                 glob.glob('%s/*.%s.gz' % (path, dataset['ext']))
-    for fname in fnames:
-        parsed_fname = '%s.%s.parsed' % (fname, dsname)
-        if os.path.exists(parsed_fname):
-            print("Skipping already parsed file %s" % fname)
-            continue
-
-        ds = parse_file(fname)
-        for pattern in dataset['ignore']:
-            for col in ds.columns:
-                if re.match(pattern, col):
-                    del ds[col]
-        if dataset['ds'] is not None:
-            dataset['ds'] = pd.concat((dataset['ds'], ds))
-        else:
-            dataset['ds'] = ds
-        with open(parsed_fname, 'a+') as fd:
-            # touch .parsed file
-            pass
+    for root, dirs, files in os.walk(path):
+        for fname in files:
+            if not fname.endswith(dataset['ext'] + '.gz'):
+                continue
+            path = os.path.join(root, fname)
+            ds = parse_file(path)
+            if ds is None:
+                continue
+            for pattern in dataset['ignore']:
+                for col in ds.columns:
+                    if re.match(pattern, col):
+                        del ds[col]
+            if dataset['ds'] is not None:
+                dataset['ds'] = pd.concat((dataset['ds'], ds))
+            else:
+                dataset['ds'] = ds
              
     
 # def plot_data(columns, plottype, labelfmt):
