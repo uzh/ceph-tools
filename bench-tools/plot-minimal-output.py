@@ -128,10 +128,18 @@ def plot_pool(data, pool, what, wlabel=None, tests=None, testlabel='', func=lamb
     cmnorm = mplcolors.Normalize(vmin=0,vmax=len(alltests))
     for name in sorted(alltests):
         values = alltests[name]
-        t = [i[0] for i in values]
-        terr = [i[1] for i in values]
-        # plot = ax.bar(ind+idx*width, t, width, color=colors[idx], yerr=terr)
-        plot = ax.bar(ind+idx*width, t, width, color=cm(cmnorm(idx)), yerr=terr)
+        y = [i[0] for i in values]
+        yerr = [i[1] for i in values]
+        # plot = ax.bar(ind+idx*width, y, width, color=colors[idx], yerr=yerr)
+        plot = ax.bar(ind+idx*width, y, width, color=cm(cmnorm(idx)), yerr=yerr)
+        for rect in plot:
+            height = rect.get_height()
+            ax.text(rect.get_x()+rect.get_width()/2.,
+                    height + 2,
+                    '%d'%int(height),
+                    ha='center',
+                    va='bottom')
+        ax.legend((y,))
         plots.append(plot)
         name = os.path.basename(name)
         parallel = data[data.name == name].groupby(['pool','iodepth','bs', 'test']).hostname.count()

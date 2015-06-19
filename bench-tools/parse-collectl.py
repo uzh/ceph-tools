@@ -46,6 +46,29 @@ re_collectl = re.compile('fio-test.(p:(?P<pool>[^.]+).)?'
                         '(?P<test>read|randread|write|randwrite).'
                          '(?P<cache>cache|nocache).collectl[.-]*(?P<hostname>(osd|node|vhp)-[kl][0-9]-(01-)?[0-9]+).*')
 
+DATASETS = {
+    # name: {'opts': <collectl options>,
+    #        'ds': <pandas dataset>,
+    #        'ignore': [<list of regexp of column names to ignore>],
+    #        }
+    # name will be used as extension for the plot.
+    'cpu': {'opts': 'C',
+            'ds': None,
+            'ignore': [r'\[CPU:[0-9]+\](Nice|GuestN?|Steal)%'],
+            'ext': 'cpu',
+            },
+    'net': {'opts': 'N',
+            'ds': None,
+            'ignore': [r'\[NET:(eth|bond).*'],
+            'ext': 'net',
+        },
+    'disk': {'opts': 'D',
+            'ds': None,
+            'ignore': [r'\[DSK:dm.*'],
+            'ext': 'dsk',
+        },
+}
+
 def strtok(s):
     if s[-1] == 'k':
         return int(s[:-1])
@@ -155,31 +178,16 @@ if __name__ == "__main__":
     #   - parse the output file
     #   - create a dataset and add it to the correct main dataset
     # * save the datasets
-    DATASETS = {
-        # name: {'opts': <collectl options>,
-        #        'ds': <pandas dataset>,
-        #        'ignore': [<list of regexp of column names to ignore>],
-        #        }
-        # name will be used as extension for the plot.
-        'cpu': {'opts': 'C',
-                'ds': None,
-                'ignore': [r'\[CPU:[0-9]+\](Nice|GuestN?|Steal)%'],
-                'ext': 'cpu',
-                },
-        # 'net': {'opts': 'N',
-        #         'ds': None,
-        #         'ignore': [],
-        #         'ext': 'net',
-        #     },
-    }
-    for path in cfg.dirs:
-        for name, dataset in DATASETS.items():
+    for name, dataset in DATASETS.items():
+        print("PARSING dataset of type %s" % name)
+        for path in cfg.dirs:
             parse_directory(path, dataset, name)
 
-    for name, dataset in DATASETS.items():
         if dataset['ds'] is not None:
             print("Saving dataset for %s" % name)
             dataset['ds'].to_csv('collectl.%s.csv' % name, index=False)
+            # Try to free some memory
+            dataset['ds'] = None
 
     # for title, cols, replacement in (
     #         ('CPU percent aggregate', [
