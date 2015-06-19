@@ -121,7 +121,7 @@ TIME_TOTAL=$[RUNTIME*N_TOTAL]
 FIO="/root/fio-rbd"
 MAINDIR=$PWD
 
-COLLECTLOPTS="-i 1:10:30 --runtime $[RUNTIME+15]s --plot --subsys cCdDJnNmMZ --sep , --rawtoo --hr -1"
+COLLECTLOPTS="-i 1:10:30 --runtime $[RUNTIME+15]s --plot --subsys cCdDJnNmMZ --sep , --rawtoo --hr 0"
 
 CURTEST=0
 for RUN in $(seq 1 $RUNS)
