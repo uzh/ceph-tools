@@ -91,9 +91,12 @@ def parse_file(fname):
     #      '--hr', '0'],           # Header on 1st row only.
     # ))
     # ds = pd.read_csv(out, parse_dates=[[0,1]])
-    with gzip.open(fname, 'r') as input:
-        out = StringIO(input.read())
-
+    try:
+        with gzip.open(fname, 'r') as input:
+            out = StringIO(input.read())
+    except Exception as ex:
+        print("Skipping file %s because of error %s" % (fname,ex))
+        return
     ds = pd.read_csv(out, parse_dates=[[0,1]], skiprows=15)
 
     # Fix column names
