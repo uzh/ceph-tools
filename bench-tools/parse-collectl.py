@@ -57,6 +57,11 @@ DATASETS = {
             'ignore': [r'\[CPU:[0-9]+\](Nice|GuestN?|Steal)%'],
             'ext': 'cpu',
             },
+    'cpuaggr': {'opts': 'c',
+            'ds': None,
+            'ignore': [r'\[CPU\](Soft|Steal|Idle|Nice)%'],
+            'ext': 'tab',
+            },
     'net': {'opts': 'N',
             'ds': None,
             'ignore': [r'\[NET:(eth|bond).*'],
@@ -97,7 +102,11 @@ def parse_file(fname):
     except Exception as ex:
         print("Skipping file %s because of error %s" % (fname,ex))
         return
-    ds = pd.read_csv(out, parse_dates=[[0,1]], skiprows=15)
+    try:
+        ds = pd.read_csv(out, parse_dates=[[0,1]], skiprows=15)
+    except Exception as ex:
+        print("Skipping file %s because of error %s" % (fname,ex))
+        return
 
     # Fix column names
     ds = ds.rename(columns={'#Date_Time': 'DateTime'}, copy=False)
@@ -173,6 +182,7 @@ def parse_directory(path, dataset, dsname):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser('parse collectl output files and produce plots')
     parser.add_argument("dirs", nargs='+', help='Directories containing collectl RAW files.')
+    parser.add_argument('-o', '--output', default='collectl', help='Base name of csv file.')
 
     cfg = parser.parse_args()
 
@@ -190,87 +200,6 @@ if __name__ == "__main__":
 
         if dataset['ds'] is not None:
             print("Saving dataset for %s" % name)
-            dataset['ds'].to_csv('collectl.%s.csv' % name, index=False)
+            dataset['ds'].to_csv('%s.%s.csv' % (cfg.output, name), index=False)
             # Try to free some memory
             dataset['ds'] = None
-
-    # for title, cols, replacement in (
-    #         ('CPU percent aggregate', [
-    #             '[CPU]User%',
-    #             # '[CPU]Nice%',
-    #             '[CPU]Sys%',
-    #             '[CPU]Wait%',
-    #             '[CPU]Irq%',
-    #             # '[CPU]Soft%',
-    #             #'[CPU]Steal%',
-    #             #'[CPU]Idle%',
-    #             '[CPU]Totl%'
-    #         ], lambda x: x.replace('[CPU]','')),
-
-    #         ('CPU abs aggregate', [
-    #             '[CPU]Intrpt/sec',
-    #             '[CPU]Ctx/sec',
-    #             '[CPU]Proc/sec',
-    #             '[CPU]ProcQue',
-    #             '[CPU]ProcRun',
-    #         ], lambda x: x.replace('[CPU]','')),
-
-    #         ('Disk aggregate', [
-    #             '[DSK]ReadTot',
-    #             '[DSK]WriteTot',
-    #             '[DSK]OpsTot',
-    #             '[DSK]ReadMrgTot',
-    #             '[DSK]WriteMrgTot',
-    #             '[DSK]MrgTot',
-    #         ], lambda x: x.replace('[DSK]','')),
-
-    #         ('Disk aggregate BW', [
-    #             '[DSK]ReadKBTot',
-    #             '[DSK]WriteKBTot',
-    #             '[DSK]KbTot',
-    #         ], lambda x: x.replace('[DSK]','')),
-
-    #         ('Net vlan618', [
-    #             #'[NET:vlan618]Name',
-    #             '[NET:vlan618]RxPkt',
-    #             '[NET:vlan618]TxPkt',
-    #             '[NET:vlan618]RxKB',
-    #             '[NET:vlan618]TxKB',
-    #             '[NET:vlan618]RxErr',
-    #             '[NET:vlan618]RxDrp',
-    #             '[NET:vlan618]RxFifo',
-    #             '[NET:vlan618]RxFra',
-    #             '[NET:vlan618]RxCmp',
-    #             '[NET:vlan618]RxMlt',
-    #             '[NET:vlan618]TxErr',
-    #             '[NET:vlan618]TxDrp',
-    #             '[NET:vlan618]TxFifo',
-    #             '[NET:vlan618]TxColl',
-    #             '[NET:vlan618]TxCar',
-    #             '[NET:vlan618]TxCmp',
-    #             '[NET:vlan618]RxErrs',
-    #             '[NET:vlan618]TxErrs',
-    #         ], lambda x: x.replace('[NET:vlan618]', 'vlan618:')),
-
-    #         ('Net vlan619', [
-    #             #'[NET:vlan619]Name',
-    #             '[NET:vlan619]RxPkt',
-    #             '[NET:vlan619]TxPkt',
-    #             '[NET:vlan619]RxKB',
-    #             '[NET:vlan619]TxKB',
-    #             '[NET:vlan619]RxErr',
-    #             '[NET:vlan619]RxDrp',
-    #             '[NET:vlan619]RxFifo',
-    #             '[NET:vlan619]RxFra',
-    #             '[NET:vlan619]RxCmp',
-    #             '[NET:vlan619]RxMlt',
-    #             '[NET:vlan619]TxErr',
-    #             '[NET:vlan619]TxDrp',
-    #             '[NET:vlan619]TxFifo',
-    #             '[NET:vlan619]TxColl',
-    #             '[NET:vlan619]TxCar',
-    #             '[NET:vlan619]TxCmp',
-    #             '[NET:vlan619]RxErrs',
-    #             '[NET:vlan619]TxErrs',
-    #         ], lambda x: x.replace('[NET:vlan619]', 'vlan619:')),
-    #      ):
