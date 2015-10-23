@@ -152,6 +152,61 @@ def graph_can_be_deleted(graph):
     return True
 
 
+def find_subgraphs_to_delete(graph):
+    # this doesn't work: it can also find the root even if there are
+    # subtree starting from the root that cannot be deleted.
+    leafs = [n for n,d in graph.out_degree().items() if d == 0]
+    want_to_delete = {}
+    to_visit_again = set()
+    for leaf in leafs:
+        if DELETE_PATTERN not in leaf:
+            want_to_delete[leaf] = False
+            continue
+        else:
+            want_to_delete[leaf] = True
+
+        # Now, go up
+        subtree = graph.subgraph(nx.ancestors(graph, leaf))
+        currently_deleting = True
+        for node in reversed(nx.topological_sort(subtree)):
+            # * If node has been visited already, skip to next leaf
+            # * (avoid visiting ancestors twice)
+            #
+            # * If node cannot be deleted, continue and mark all nodes
+            #   as cannot be deleted.
+            #
+            # * If node has been never visited, and it should be deleted,
+            #
+            #   - if has other outlets, add it to the list of nodes to
+            #     check later on
+            #   - if has no other outles, mark it for deletion and
+            #     continue
+            if node in want_to_delete:
+                # We already visited this node, we should stop.
+                break
+            if DELETE_PATTERN not in leaf or currently_deleting is False:
+                # None of the ancestors should be deleted
+                want_to_delete[node] = False
+                currently_deleting = False
+                continue
+
+            # Apparently, DELETE_PATTERN is in leaf, we are currently
+            # deleting and this is the first time we visit the node.            
+            if len(subtree.edges(node)) == 1:
+                # This is the only children.
+                want_to_delete[node] = True
+            else:
+                to_visit_again.add(node)
+                break
+
+    to_delete = [i for i in want_to_delete if want_to_delete.get(i)]
+    if to_visit_again:
+        # Remove nodes we already visited and call again this function.
+        sub = graph.subgraph([g for g in graph if g not in to_delete])
+        to_delete.extend(find_subgraphs_to_delete(sub).nodes())
+    return graph.subgraph(to_delete)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description=__doc__,
@@ -196,16 +251,17 @@ if __name__ == "__main__":
     if cfg.save:
         pickle.dump(graph, open(cfg.save, 'w'))
 
-    # Now we have a big graph, but we actually want to find the connected
-    # components. Main goal: find connected components made of images that
-    # can be deleted (thus, the whole connected component can be deleted)
-    subgraphs = find_connected_components(graph)
+    # # Now we have a big graph, but we actually want to find the connected
+    # # components. Main goal: find connected components made of images that
+    # # can be deleted (thus, the whole connected component can be deleted)
+    # subgraphs = find_connected_components(graph)
 
-    to_delete = []
-    for sub in subgraphs:
-        if graph_can_be_deleted(sub):
-            to_delete.append(sub)
-
+    # to_delete = []
+    # for sub in subgraphs:
+    #     if graph_can_be_deleted(sub):
+    #         to_delete.append(sub)
+    subgraphs = find_subgraphs_to_delete(graph)
+    to_delete = find_connected_components(subgraphs)
 
     # Cleanup connected components
     for g in to_delete:
