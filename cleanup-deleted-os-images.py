@@ -56,6 +56,8 @@ import networkx as nx
 import rados
 import rbd
 
+DELETE_PATTERN = 'to_be_deleted_by_glance'
+
 def cluster_connect(pool, conffile, rados_id):
     cluster = rados.Rados(conffile=conffile, rados_id=rados_id)
     cluster.connect()
@@ -115,17 +117,17 @@ def build_layering_graph(ioctx, pool, filter_volumes = lambda x: True):
     return graph
 
 
-def find_connected_components(origgraph):
-    graph = origgraph.copy()
+def find_connected_components(graph):
     subgraphs = []
 
     # Find subgraphs (connected components)
-    for g in nx.topological_sort(graph):
-        if g in graph:
-            nodes = nx.shortest_path(graph, source=g).keys()
-            sub = graph.subgraph(nodes)
-            subgraphs.append(sub)
-            graph.remove_nodes_from(sub)
+
+    # Find roots (nodes with only out edges)
+    roots = [n for n,d in graph.in_degree().items() if d == 0]
+    for g in roots:
+        nodes = nx.shortest_path(graph, source=g).keys()
+        sub = graph.subgraph(nodes)
+        subgraphs.append(sub)
     return subgraphs
 
 
@@ -133,11 +135,11 @@ def graph_can_be_deleted(graph):
     to_be_deleted = []
     for n in graph:
         # volume/snapshot cannot be deleted, thus the graph cannot be deleted
-        if 'to_be_deleted' not in n:
+        if DELETE_PATTERN not in n:
             return False
         if '@' in n:
             volume, snapshot = n.split('@')
-            if False in ['to_be_deleted' in i for i in (volume, snapshot)]:
+            if False in [DELETE_PATTERN in i for i in (volume, snapshot)]:
                 # this is a snapshot, but either the image or the
                 # snapshot cannot be deleted.
                 return False
@@ -207,6 +209,7 @@ if __name__ == "__main__":
 
     # Cleanup connected components
     for g in to_delete:
+        # Note: in networkx 1.9 you also have reverse=True
         for n in reversed(nx.topological_sort(g)):
             if not cfg.force:
                 if '@' in n:
