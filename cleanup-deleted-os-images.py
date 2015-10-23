@@ -270,8 +270,8 @@ if __name__ == "__main__":
             if not cfg.force:
                 if '@' in n:
                     print("rbd -p %s snap unprotect %s" % (cfg.pool, n))
+                    print("rbd -p %s snap remove %s" % (cfg.pool, n))
                 else:
-                    print("rbd -p %s snap purge %s" % (cfg.pool, n))
                     print("rbd -p %s rm %s" % (cfg.pool, n))
                     print("")
             else:
