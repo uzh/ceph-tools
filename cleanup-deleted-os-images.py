@@ -152,14 +152,14 @@ def graph_can_be_deleted(graph):
     return True
 
 
-def find_subgraphs_to_delete(graph):
+def find_subgraphs_to_delete(graph, delete_pattern=DELETE_PATTERN):
     # this doesn't work: it can also find the root even if there are
     # subtree starting from the root that cannot be deleted.
     leafs = [n for n,d in graph.out_degree().items() if d == 0]
     want_to_delete = {}
     to_visit_again = set()
     for leaf in leafs:
-        if DELETE_PATTERN not in leaf:
+        if delete_pattern not in leaf:
             want_to_delete[leaf] = False
             continue
         else:
@@ -184,7 +184,7 @@ def find_subgraphs_to_delete(graph):
             if node in want_to_delete:
                 # We already visited this node, we should stop.
                 break
-            if DELETE_PATTERN not in leaf or currently_deleting is False:
+            if delete_pattern not in leaf or currently_deleting is False:
                 # None of the ancestors should be deleted
                 want_to_delete[node] = False
                 currently_deleting = False
@@ -203,7 +203,7 @@ def find_subgraphs_to_delete(graph):
     if to_visit_again:
         # Remove nodes we already visited and call again this function.
         sub = graph.subgraph([g for g in graph if g not in to_delete])
-        to_delete.extend(find_subgraphs_to_delete(sub).nodes())
+        to_delete.extend(find_subgraphs_to_delete(sub, delete_pattern=delete_pattern).nodes())
     return graph.subgraph(to_delete)
 
 
