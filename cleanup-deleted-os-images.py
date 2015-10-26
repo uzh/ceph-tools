@@ -55,6 +55,9 @@ import cPickle as pickle
 import networkx as nx
 import rados
 import rbd
+import unittest
+import sys
+
 
 DELETE_PATTERN = 'to_be_deleted_by_glance'
 
@@ -64,6 +67,36 @@ def cluster_connect(pool, conffile, rados_id):
     ioctx = cluster.open_ioctx(pool)
     return ioctx
 
+
+class TestCase(unittest.TestCase):
+    def test_find_max_subgraph_to_delete(self):
+        graph = nx.DiGraph()
+
+        # *_d nodes have been deleted by glance
+        #
+        #       a1_d
+        #      /    \
+        #     b1_d    b2
+        #    /   \    \
+        #   c1_d  c2   c3_d
+        #  / 
+        # d1_d
+
+        graph.add_path(['a1_d', 'b1_d','c1_d','d1_d'])
+        graph.add_path(['b1_d', 'c2'])
+        graph.add_path(['a1_d', 'b2', 'c3_d'])
+        # The graphs to be deleted should be two:
+
+        #   c1_d   c3_d
+        #  / 
+        # d1_d
+        g1 = nx.DiGraph()
+        g1.add_path(['c1_d', 'd1_d'])
+        g1.add_node('c3_d')
+        
+        to_delete = find_subgraphs_to_delete(graph, delete_pattern='_d')
+        
+        self.assertTrue(nx.is_isomorphic(g1, to_delete), "Graphs are not isomorphic")
 
 def build_layering_graph(ioctx, pool, filter_volumes = lambda x: True):
     """Returns a netowrkx DAG of all the rbd volumes and snapshots"""
@@ -234,8 +267,14 @@ if __name__ == "__main__":
                         action='store_true',
                         help='Instead of printing rbd commands to cleanup '
                         'deleted images, actually delete them.')
+    parser.add_argument('--run-tests', action='store_true', help='Run tests')
     cfg = parser.parse_args()
 
+    if cfg.run_tests:
+        sys.argv=[sys.argv[0]]
+        unittest.main()
+        sys.exit(0)
+    
     # Build the graph of volumes/snapshots
     if cfg.load:
         graph = pickle.load(open(cfg.load))
