@@ -235,8 +235,6 @@ if __name__ == "__main__":
                         help='Instead of printing rbd commands to cleanup '
                         'deleted images, actually delete them.')
     cfg = parser.parse_args()
-    ioctx = cluster_connect(cfg.pool, cfg.conf, cfg.user)
-    rbd_inst = rbd.RBD()
 
     # Build the graph of volumes/snapshots
     if cfg.load:
@@ -244,6 +242,9 @@ if __name__ == "__main__":
     else:
         def _filter_volumes_and_disks(x):
             return not x.startswith('volume-') and not x.endswith('_disk')
+        ioctx = cluster_connect(cfg.pool, cfg.conf, cfg.user)
+        rbd_inst = rbd.RBD()
+
         graph = build_layering_graph(ioctx, cfg.pool,
                                      filter_volumes=_filter_volumes_and_disks)
 
