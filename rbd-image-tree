@@ -1,0 +1,203 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-#
+#
+#
+# Copyright (C) 2015, S3IT, University of Zurich. All rights reserved.
+#
+#
+# This program is free software; you can redistribute it and/or modify it
+# under the terms of the GNU General Public License as published by the
+# Free Software Foundation; either version 2 of the License, or (at your
+# option) any later version.
+#
+# This program is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+"""
+This script will connect to ceph using python bindings and produce
+a graph of RBD volumes and produce a DOT file that can be later
+converted into an image using `dot` command line (part of graphviz
+package).
+
+If no 'volumes' argument is passed, a graph of all the images will be
+produced.
+    
+Nodes on the graph have different colors/shape depending on their
+name. The name usually identify what they are. We do not double check
+with openstack if the rbd volume is actually a volume, an image, a
+snapshot or the root disk of an image.
+
++---------+-----------------------------------------+
+| shape   | meaning                                 |
++---------+-----------------------------------------+
+| ellipse | glance images and anything unrecognized |
+| diamond | cinder volumes ('volume-...')           |
+| box     | ephemeral disks ('.*_disk')             |
+| hexagon | VM snapshots ('.*_disk_clone')          |
++---------+-----------------------------------------+
+
+Red nodes are voumes or images that should have been deleted but were
+not ('.*to_be_deleted_by_glance') (cfr. patch https://review.openstack.org/#/c/125963/)
+
+"""
+
+__docformat__ = 'reStructuredText'
+__author__ = 'Antonio Messina <antonio.s.messina@gmail.com>'
+
+import rados
+import rbd
+import pygraphviz as pgv
+import argparse
+import re
+import logging
+
+log = logging.getLogger()
+log.addHandler(logging.StreamHandler())
+
+uuid_re = '[0-9a-z]{8}-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{8}'
+
+re_image = re.compile(uuid_re)
+re_vol = re.compile('^volume-{}'.format(uuid_re))
+re_ephemeral = re.compile('{}_disk'.format(uuid_re))
+re_image_snapshot = re.compile('%s_disk_clone_[0-9a-z]{32}' % uuid_re)
+
+def attrs_by_name(name):
+    attrs = {}
+    if name.endswith('_to_be_deleted_by_glance'):
+        attrs['to_be_deleted_by_glance'] = True
+        name = name[:-24] # lenght of "_to_be_deleted_by_glance"
+    else:
+        attrs['to_be_deleted_by_glance'] = False
+    for attr, regexp in [
+            ('image', re_image),
+            ('volume', re_vol),
+            ('instance', re_ephemeral),
+            ('image_snapshot', re_ephemeral_clone),
+            ]:
+        attrs[attr] = True if regexp.match(name) else False
+    if re_image_snapshot.match(name):
+        # Glance snapshots are also sort of images
+        attrs['image'] = True
+    return attrs
+
+def color_by_name(name):
+    return 'red' if 'to_be_deleted_by_glance' in name else 'black'
+
+def shape_by_name(name):
+    # glance images have "disk_clone" in the name, VM root disks have
+    # "disk" Of course, deleted images have
+    # "disk_clone_to_be_deleted_by_glance" while VM root disks of
+    # deleted instances have "disk_to_be_deleted_by_glance
+    #
+    # box: glance images
+    # polygon: vm images
+    if 'disk_clone' in name:
+        return 'hexagon'
+    elif '_disk' in name:
+        return 'box'
+    elif name.startswith('volume'):
+        return 'diamond'
+    else:
+        return 'ellipse'
+
+images = {}
+
+def fill_graph(opts, graph, root, rootname, ioctx, descend=True, ascend=True):
+    # Find parent, snapshots and children for this image and call this
+    log.debug("Adding node %s", rootname)
+    shape = shape_by_name(rootname)
+    graph.add_node(rootname,
+                   color=color_by_name(rootname),
+                   shape=shape)
+    # Find snapshots
+    for snapshot in root.list_snaps():
+        snap = rbd.Image(ioctx, rootname, snapshot=snapshot['name'], read_only=True)
+        snapname = '%s\n@%s' % (rootname, snapshot['name'])
+        graph.add_node(snapname,
+                       color=color_by_name(snapshot['name']),
+                       shape=shape)
+        graph.add_edge(rootname, snapname)
+        log.debug("Adding snapshot node %s", snapshot['name'])
+
+        if descend:
+            for children in snap.list_children():
+                log.debug("Descending to children %s", children[1])
+                if children[0] != opts.pool:
+                    continue
+                child = images.get(children[1])
+                if not child:
+                    child = rbd.Image(ioctx, children[1], read_only=True)
+                fill_graph(opts, graph, child, children[1], ioctx, ascend=False)
+                graph.add_edge(snapname, children[1])
+    if ascend:
+        try:
+            parent = root.parent_info()
+            if parent[0] != opts.pool and not opts.full:
+                log.warn("Ignoring parent %s of RBD volume %s as it doesn't belong to the same pool",
+                         parent[1], rootname)
+            else:
+                if opts.full:
+                    log.debug("Image %s does not belong to pool %s but %s. Continuing as --full option was used", parent[1], opts.pool, parent[0])
+                image = images.get(parent[1])
+                if not image:
+                    image = rbd.Image(ioctx, parent[1], read_only=True)
+                log.debug("Ascending to parent %s", parent[1])
+                fill_graph(opts, graph, image, parent[1], ioctx, descend=False)
+                log.debug("Adding snapshot node %s@%s", parent[1], parent[2])
+                graph.add_node('%s\n@%s' % (parent[1], parent[2]), color=color_by_name(parent[2]), shape=shape_by_name(parent[1]))
+                graph.add_edge('%s\n@%s' % (parent[1], parent[2]), rootname)
+        except rbd.ImageNotFound:
+            # No parent, ignore
+            pass
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument('-p', '--pool',
+                        default='cinder',
+                        help="Build the snapshot tree starting from all volumes in this pool. "
+                        "Default: %(default)s")
+    parser.add_argument('volumes', nargs='*',
+                        help="Only build tree for these RBD volumes. "
+                        "Note: these volumes must be in POOL.")
+    
+    parser.add_argument('-o', '--output',
+                        default='plot-rbd.dot',
+                        help='DOT output file. Default: %(default)s')
+    parser.add_argument('--id', '--user', dest='user', default='admin',
+                        help="Ceph user to use. Default: %(default)s")
+    parser.add_argument('-c', '--config',
+                        default='/etc/ceph/ceph.conf',
+                        help="Ceph configuration file. Default: %(default)s")
+    parser.add_argument('-f', '--full', action='store_true',
+                        help="Also include images belonging to a different pool")
+    parser.add_argument('-v', '--verbose', action='count', default=0,
+                        help='Increase verbosity')
+    opts = parser.parse_args()
+
+    # Set verbosity
+    verbosity = max(0, 3-opts.verbose) * 10
+    log.setLevel(verbosity)
+
+
+    cluster = rados.Rados(conffile=opts.config, rados_id=opts.user)
+    cluster.connect()
+    ioctx = cluster.open_ioctx(opts.pool)
+    rbd_inst = rbd.RBD()
+
+    graph = pgv.AGraph(directed=True)
+    if not opts.volumes:
+        opts.volumes = [vol for vol in rbd_inst.list(ioctx)]
+
+    for vol in opts.volumes:
+        if vol not in graph:
+            image = rbd.Image(ioctx, vol, read_only=True)
+            images[vol] = image
+            fill_graph(opts, graph, image, vol, ioctx)
+    graph.write(opts.output)
+    
+    print("Output written to %s" % opts.output)
