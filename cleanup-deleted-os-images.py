@@ -79,7 +79,7 @@ class TestCase(unittest.TestCase):
         #     b1_d    b2
         #    /   \    \
         #   c1_d  c2   c3_d
-        #  / 
+        #  /
         # d1_d
 
         graph.add_path(['a1_d', 'b1_d','c1_d','d1_d'])
@@ -88,14 +88,14 @@ class TestCase(unittest.TestCase):
         # The graphs to be deleted should be two:
 
         #   c1_d   c3_d
-        #  / 
+        #  /
         # d1_d
         g1 = nx.DiGraph()
         g1.add_path(['c1_d', 'd1_d'])
         g1.add_node('c3_d')
-        
+
         to_delete = find_subgraphs_to_delete(graph, delete_pattern='_d')
-        
+
         self.assertTrue(nx.is_isomorphic(g1, to_delete), "Graphs are not isomorphic")
 
 def build_layering_graph(ioctx, pool, filter_volumes = lambda x: True):
@@ -127,7 +127,7 @@ def build_layering_graph(ioctx, pool, filter_volumes = lambda x: True):
         graph.add_node(name)
 
         for snap in volume.list_snaps():
-            snapname = volume.name + '@' + snap['name']
+            snapname = name + '@' + snap['name']
             snapshots.append({'volume': name,
                               'snap': snap['name']})
             graph.add_node(snapname)
@@ -146,7 +146,7 @@ def build_layering_graph(ioctx, pool, filter_volumes = lambda x: True):
             if volpool != pool:
                 print("WARNING: Image %s@%s has clone on a different pool: %s"
                       % (vol, snapname, volpool))
-            graph.add_edge('%s@%s' % (volume.name, snapname), name)
+            graph.add_edge('%s@%s' % (name, snapname), name)
     return graph
 
 
@@ -224,7 +224,7 @@ def find_subgraphs_to_delete(graph, delete_pattern=DELETE_PATTERN):
                 continue
 
             # Apparently, DELETE_PATTERN is in leaf, we are currently
-            # deleting and this is the first time we visit the node.            
+            # deleting and this is the first time we visit the node.
             if len(subtree.edges(node)) == 1:
                 # This is the only children.
                 want_to_delete[node] = True
@@ -274,7 +274,7 @@ if __name__ == "__main__":
         sys.argv=[sys.argv[0]]
         unittest.main()
         sys.exit(0)
-    
+
     # Build the graph of volumes/snapshots
     if cfg.load:
         graph = pickle.load(open(cfg.load))
